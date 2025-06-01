@@ -15,43 +15,60 @@
   <div id="map"></div>
 
   <script>
-    function initMap() {
-      console.log("initMap has been called");
-      const london = { lat: 51.5074, lng: -0.1278 };
-      const map = new google.maps.Map(document.getElementById('map'), {
-        zoom: 13,
-        center: london
-      });
+  function initMap() {
+    console.log("initMap has been called");
 
-      // Fetch buses for route 38
-      fetch('https://api.tfl.gov.uk/Line/38/Arrivals')
-        .then(res => res.json())
-        .then(data => {
-          const seen = new Set();
-          data.forEach(bus => {
-            if (bus.latitude && bus.longitude && !seen.has(bus.vehicleId)) {
-              seen.add(bus.vehicleId);
-              const marker = new google.maps.Marker({
-                position: { lat: bus.latitude, lng: bus.longitude },
-                map: map,
-                title: `Bus ${bus.vehicleId}`
-              });
+    const london = { lat: 51.5074, lng: -0.1278 };
+    const map = new google.maps.Map(document.getElementById('map'), {
+      zoom: 13,
+      center: london
+    });
 
-              const infoWindow = new google.maps.InfoWindow({
-                content: `<strong>Bus ${bus.vehicleId}</strong><br>To: ${bus.destinationName}`
-              });
+    fetch('https://api.tfl.gov.uk/Line/149/Arrivals')
+      .then(res => res.json())
+      .then(data => {
+        const buses = {};
 
-              marker.addListener('click', () => {
-                infoWindow.open(map, marker);
-              });
-            }
-          });
-        })
-        .catch(err => {
-          console.error('TfL API error:', err);
+        // Group by vehicleId, and pick the soonest predicted stop
+        data.forEach(arrival => {
+          const id = arrival.vehicleId;
+          if (!buses[id] || new Date(arrival.expectedArrival) < new Date(buses[id].expectedArrival)) {
+            buses[id] = arrival;
+          }
         });
-    }
-  </script>
+
+        const count = Object.keys(buses).length;
+        console.log(`Showing ${count} vehicles on route 149`);
+
+        Object.values(buses).forEach(bus => {
+          const lat = bus.latitude || bus.stationLatitude;
+          const lon = bus.longitude || bus.stationLongitude;
+          const eta = new Date(bus.expectedArrival).toLocaleTimeString();
+
+          const marker = new google.maps.Marker({
+            position: { lat, lng: lon },
+            map: map,
+            title: `Bus ${bus.vehicleId}`
+          });
+
+          const infoWindow = new google.maps.InfoWindow({
+            content: `<strong>Bus ${bus.vehicleId}</strong><br>Destination: ${bus.destinationName}<br>ETA: ${eta}<br>Next stop: ${bus.stationName}`
+          });
+
+          marker.addListener('click', () => {
+            infoWindow.open(map, marker);
+          });
+        });
+      })
+      .catch(err => {
+        console.error('TfL API error:', err);
+      });
+  }
+</script>
+
+
+
+
 
   <script src="config.js"></script>
   <script>
