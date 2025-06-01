@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Live Bus Map (Google Maps)</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1.0">
+  <style>
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    function initMap() {
+      const london = { lat: 51.5074, lng: -0.1278 };
+      const map = new google.maps.Map(document.getElementById('map'), {
+        zoom: 13,
+        center: london
+      });
+
+      fetch('https://api.tfl.gov.uk/Line/38/Arrivals')
+        .then(res => res.json())
+        .then(data => {
+          const seen = new Set();
+          data.forEach(bus => {
+            if (bus.latitude && bus.longitude && !seen.has(bus.vehicleId)) {
+              seen.add(bus.vehicleId);
+              const marker = new google.maps.Marker({
+                position: { lat: bus.latitude, lng: bus.longitude },
+                map: map,
+                title: `Bus ${bus.vehicleId}`
+              });
+
+              const infoWindow = new google.maps.InfoWindow({
+                content: `<strong>Bus ${bus.vehicleId}</strong><br>To: ${bus.destinationName}`
+              });
+
+              marker.addListener('click', () => {
+                infoWindow.open(map, marker);
+              });
+            }
+          });
+        })
+        .catch(err => {
+          console.error('TfL API error:', err);
+        });
+    }
+  </script>
+  <script async
+    src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&callback=initMap">
+  </script>
+</body>
+</html>
