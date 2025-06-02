@@ -15,85 +15,116 @@
   <div id="map"></div>
 
   <script>
+  let map;
+  let markers = [];
+  let stopCache = {};
+  let currentRoute = "149";
+
   function initMap() {
     console.log("initMap has been called");
 
     const london = { lat: 51.5074, lng: -0.1278 };
-    const map = new google.maps.Map(document.getElementById('map'), {
+    map = new google.maps.Map(document.getElementById('map'), {
       zoom: 13,
       center: london
     });
 
-    const stopCache = {}; // To avoid repeated StopPoint calls
+    createRouteDropdown();
+    updateBuses(); // Initial load
+    setInterval(updateBuses, 15000); // Auto-refresh every 15s
+  }
 
-    fetch('https://api.tfl.gov.uk/Line/7/Arrivals')
-      .then(res => res.json())
-      .then(async data => {
-        const buses = {};
+  function createRouteDropdown() {
+    const dropdown = document.createElement("select");
+    dropdown.id = "routeSelector";
+    dropdown.style.position = "absolute";
+    dropdown.style.top = "10px";
+    dropdown.style.left = "10px";
+    dropdown.style.zIndex = "9999";
+    dropdown.style.padding = "5px";
+    dropdown.innerHTML = `
+      <option value="149">Route 149</option>
+      <option value="38">Route 38</option>
+      <option value="25">Route 25</option>
+      <option value="73">Route 73</option>
+      <option value="243">Route 243</option>
+    `;
+    dropdown.value = currentRoute;
+    dropdown.addEventListener("change", () => {
+      currentRoute = dropdown.value;
+      stopCache = {}; // Reset cache for new route
+      updateBuses();
+    });
+    document.body.appendChild(dropdown);
+  }
 
-        // Group by vehicleId: keep the soonest arrival only
-        data.forEach(arrival => {
-          const id = arrival.vehicleId;
-          if (!buses[id] || new Date(arrival.expectedArrival) < new Date(buses[id].expectedArrival)) {
-            buses[id] = arrival;
+  async function updateBuses() {
+    console.log(`Fetching buses for route ${currentRoute}...`);
+
+    // Clear existing markers
+    markers.forEach(marker => marker.setMap(null));
+    markers = [];
+
+    try {
+      const res = await fetch(`https://api.tfl.gov.uk/Line/${currentRoute}/Arrivals`);
+      const data = await res.json();
+
+      const buses = {};
+      data.forEach(arrival => {
+        const id = arrival.vehicleId;
+        if (!buses[id] || new Date(arrival.expectedArrival) < new Date(buses[id].expectedArrival)) {
+          buses[id] = arrival;
+        }
+      });
+
+      for (const bus of Object.values(buses)) {
+        const naptanId = bus.naptanId;
+
+        let stop;
+        if (stopCache[naptanId]) {
+          stop = stopCache[naptanId];
+        } else {
+          const stopRes = await fetch(`https://api.tfl.gov.uk/StopPoint/${naptanId}`);
+          stop = await stopRes.json();
+          stopCache[naptanId] = stop;
+        }
+
+        const lat = stop.lat;
+        const lon = stop.lon;
+
+        if (!lat || !lon) {
+          console.warn(`Missing lat/lon for stop ${naptanId}`);
+          continue;
+        }
+
+        const eta = new Date(bus.expectedArrival).toLocaleTimeString();
+
+        const marker = new google.maps.Marker({
+          position: { lat, lng: lon },
+          map: map,
+          title: `Bus ${bus.vehicleId}`,
+          icon: {
+            url: "map_bus_2_sml.png", // use your own local or hosted icon
+            scaledSize: new google.maps.Size(20, 30)
           }
         });
 
-        console.log(`Showing ${Object.keys(buses).length} buses`);
+        const infoWindow = new google.maps.InfoWindow({
+          content: `<strong>Bus ${bus.vehicleId}</strong><br>To: ${bus.destinationName}<br>Next Stop: ${bus.stationName}<br>ETA: ${eta}`
+        });
 
-        for (const bus of Object.values(buses)) {
-          const naptanId = bus.naptanId;
+        marker.addListener('click', () => {
+          infoWindow.open(map, marker);
+        });
 
-          // Use cached stop location if available
-          let stop;
-          if (stopCache[naptanId]) {
-            stop = stopCache[naptanId];
-          } else {
-            try {
-              const res = await fetch(`https://api.tfl.gov.uk/StopPoint/${naptanId}`);
-              stop = await res.json();
-              stopCache[naptanId] = stop;
-            } catch (err) {
-              console.warn(`Failed to fetch StopPoint ${naptanId}`);
-              continue;
-            }
-          }
-
-          const lat = stop.lat;
-          const lon = stop.lon;
-
-          if (typeof lat !== 'number' || typeof lon !== 'number') {
-            console.warn(`Invalid lat/lon for stop ${naptanId}`);
-            continue;
-          }
-
-          const eta = new Date(bus.expectedArrival).toLocaleTimeString();
-
-          const marker = new google.maps.Marker({
-  position: { lat, lng: lon },
-  map: map,
-  title: `Bus ${bus.vehicleId}`,
-  icon: {
-    url: "map_bus_2_sml.png", // or your own icon
-    scaledSize: new google.maps.Size(20, 30) // resize to fit map cleanly
-  }
-});
-
-
-          const infoWindow = new google.maps.InfoWindow({
-            content: `<strong>Bus ${bus.vehicleId}</strong><br>To: ${bus.destinationName}<br>Next Stop: ${bus.stationName}<br>ETA: ${eta}`
-          });
-
-          marker.addListener('click', () => {
-            infoWindow.open(map, marker);
-          });
-        }
-      })
-      .catch(err => {
-        console.error('TfL API error:', err);
-      });
+        markers.push(marker);
+      }
+    } catch (err) {
+      console.error("Error fetching or processing bus data:", err);
+    }
   }
 </script>
+
 
 
   <script src="config.js"></script>
