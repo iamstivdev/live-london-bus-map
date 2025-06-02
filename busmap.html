@@ -29,34 +29,32 @@
       center: london
     });
 
-    createRouteDropdown();
+    createRouteInput();
     updateBuses(); // Initial load
     setInterval(updateBuses, 15000); // Auto-refresh every 15s
   }
 
-  function createRouteDropdown() {
-    const dropdown = document.createElement("select");
-    dropdown.id = "routeSelector";
-    dropdown.style.position = "absolute";
-    dropdown.style.top = "10px";
-    dropdown.style.left = "10px";
-    dropdown.style.zIndex = "9999";
-    dropdown.style.padding = "5px";
-    dropdown.innerHTML = `
-      <option value="149">Route 149</option>
-      <option value="38">Route 38</option>
-      <option value="25">Route 25</option>
-      <option value="73">Route 73</option>
-      <option value="243">Route 243</option>
-    `;
-    dropdown.value = currentRoute;
-    dropdown.addEventListener("change", () => {
-      currentRoute = dropdown.value;
-      stopCache = {}; // Reset cache for new route
-      updateBuses();
-    });
-    document.body.appendChild(dropdown);
-  }
+  function createRouteInput() {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "Enter bus route (e.g. 38)";
+  input.style.position = "absolute";
+  input.style.top = "10px";
+  input.style.left = "10px";
+  input.style.zIndex = "9999";
+  input.style.padding = "5px";
+  input.style.fontSize = "14px";
+  input.value = currentRoute;
+
+  input.addEventListener("change", () => {
+    currentRoute = input.value.trim();
+    stopCache = {}; // Reset cache for new route
+    updateBuses();
+  });
+
+  document.body.appendChild(input);
+}
+
 
   async function updateBuses() {
     console.log(`Fetching buses for route ${currentRoute}...`);
