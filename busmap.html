@@ -24,12 +24,14 @@
       center: london
     });
 
-    fetch('https://api.tfl.gov.uk/Line/149/Arrivals')
+    const stopCache = {}; // To avoid repeated StopPoint calls
+
+    fetch('https://api.tfl.gov.uk/Line/7/Arrivals')
       .then(res => res.json())
-      .then(data => {
+      .then(async data => {
         const buses = {};
 
-        // Group by vehicleId, and pick the soonest predicted stop
+        // Group by vehicleId: keep the soonest arrival only
         data.forEach(arrival => {
           const id = arrival.vehicleId;
           if (!buses[id] || new Date(arrival.expectedArrival) < new Date(buses[id].expectedArrival)) {
@@ -37,37 +39,61 @@
           }
         });
 
-        const count = Object.keys(buses).length;
-        console.log(`Showing ${count} vehicles on route 149`);
+        console.log(`Showing ${Object.keys(buses).length} buses`);
 
-        Object.values(buses).forEach(bus => {
-          const lat = bus.latitude || bus.stationLatitude;
-          const lon = bus.longitude || bus.stationLongitude;
+        for (const bus of Object.values(buses)) {
+          const naptanId = bus.naptanId;
+
+          // Use cached stop location if available
+          let stop;
+          if (stopCache[naptanId]) {
+            stop = stopCache[naptanId];
+          } else {
+            try {
+              const res = await fetch(`https://api.tfl.gov.uk/StopPoint/${naptanId}`);
+              stop = await res.json();
+              stopCache[naptanId] = stop;
+            } catch (err) {
+              console.warn(`Failed to fetch StopPoint ${naptanId}`);
+              continue;
+            }
+          }
+
+          const lat = stop.lat;
+          const lon = stop.lon;
+
+          if (typeof lat !== 'number' || typeof lon !== 'number') {
+            console.warn(`Invalid lat/lon for stop ${naptanId}`);
+            continue;
+          }
+
           const eta = new Date(bus.expectedArrival).toLocaleTimeString();
 
           const marker = new google.maps.Marker({
-            position: { lat, lng: lon },
-            map: map,
-            title: `Bus ${bus.vehicleId}`
-          });
+  position: { lat, lng: lon },
+  map: map,
+  title: `Bus ${bus.vehicleId}`,
+  icon: {
+    url: "map_bus_2_sml.png", // or your own icon
+    scaledSize: new google.maps.Size(20, 30) // resize to fit map cleanly
+  }
+});
+
 
           const infoWindow = new google.maps.InfoWindow({
-            content: `<strong>Bus ${bus.vehicleId}</strong><br>Destination: ${bus.destinationName}<br>ETA: ${eta}<br>Next stop: ${bus.stationName}`
+            content: `<strong>Bus ${bus.vehicleId}</strong><br>To: ${bus.destinationName}<br>Next Stop: ${bus.stationName}<br>ETA: ${eta}`
           });
 
           marker.addListener('click', () => {
             infoWindow.open(map, marker);
           });
-        });
+        }
       })
       .catch(err => {
         console.error('TfL API error:', err);
       });
   }
 </script>
-
-
-
 
 
   <script src="config.js"></script>
