@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Live London Bus Map</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1.0">
+  <style>
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+    input#routeInput {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 9999;
+      padding: 6px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <input type="text" id="routeInput" placeholder="Enter bus route (e.g. 38)" />
+
+  <script src="config.js"></script>
+  <script>
+    let map;
+    let markers = [];
+    let stopCache = {};
+    let currentRoute = "149";
+
+    function initMap() {
+      console.log("initMap has been called");
+      const london = { lat: 51.5074, lng: -0.1278 };
+      map = new google.maps.Map(document.getElementById("map"), {
+        zoom: 13,
+        center: london
+      });
+
+      const input = document.getElementById("routeInput");
+      input.value = currentRoute;
+
+      input.addEventListener("change", () => {
+        currentRoute = input.value.trim();
+        stopCache = {};
+        updateBuses();
+      });
+
+      updateBuses();
+      setInterval(updateBuses, 15000); // Refresh every 15s
+    }
+
+    async function updateBuses() {
+      console.log(`Fetching buses for route ${currentRoute}...`);
+
+      markers.forEach(marker => marker.setMap(null));
+      markers = [];
+
+      try {
+        const res = await fetch(`https://api.tfl.gov.uk/Line/${currentRoute}/Arrivals`);
+        const data = await res.json();
+        console.log("Raw /Arrivals data:", data);
+
+        const buses = {};
+        data.forEach(arrival => {
+          const id = arrival.vehicleId;
+          if (!buses[id] || new Date(arrival.expectedArrival) < new Date(buses[id].expectedArrival)) {
+            buses[id] = arrival;
+          }
+        });
+
+        console.log(`Showing ${Object.keys(buses).length} vehicles on route ${currentRoute}`);
+
+        for (const bus of Object.values(buses)) {
+          const naptanId = bus.naptanId;
+
+          let stop;
+          if (stopCache[naptanId]) {
+            stop = stopCache[naptanId];
+          } else {
+            const stopRes = await fetch(`https://api.tfl.gov.uk/StopPoint/${naptanId}`);
+            stop = await stopRes.json();
+            stopCache[naptanId] = stop;
+          }
+
+          const lat = stop.lat;
+          const lon = stop.lon;
+
+          if (!lat || !lon) {
+            console.warn(`Skipping vehicle ${bus.vehicleId} — invalid coordinates`);
+            continue;
+          }
+
+          const eta = new Date(bus.expectedArrival).toLocaleTimeString();
+
+          const marker = new google.maps.Marker({
+            position: { lat, lng: lon },
+            map: map,
+            title: `Bus ${bus.vehicleId}`,
+            icon: {
+              url: "map_bus_2_sml.png", // Use your own icon path here
+              scaledSize: new google.maps.Size(22, 34)
+            }
+          });
+
+          const infoWindow = new google.maps.InfoWindow({
+            content: `<strong>Bus ${bus.vehicleId}</strong><br>To: ${bus.destinationName}<br>Next Stop: ${bus.stationName}<br>ETA: ${eta}`
+          });
+
+          marker.addListener("click", () => {
+            infoWindow.open(map, marker);
+          });
+
+          markers.push(marker);
+        }
+      } catch (err) {
+        console.error("Error fetching or processing bus data:", err);
+      }
+    }
+  </script>
+
+ <script>
+  const script = document.createElement("script");
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap`;
+  script.async = true;
+  document.head.appendChild(script);
+</script>
+
+</body>
+</html>
